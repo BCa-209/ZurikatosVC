@@ -17,7 +17,7 @@ class Settings(BaseSettings):
 
 
 class ResetRequest(BaseModel):
-    capacity_kg: int = Field(default=64, ge=8, le=500, strict=True)
+    capacity_kg: int = Field(default=64, ge=8, le=5000, strict=True)
 
 
 class SpeedRequest(BaseModel):

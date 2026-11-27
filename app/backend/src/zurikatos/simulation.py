@@ -2,7 +2,9 @@ from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from random import Random
 from threading import RLock
-from .network import Network, demo_network
+from math import ceil
+from uuid import uuid4
+from .network import Network, load_network
 from .planner import GreedyPlanner, Planner
 
 
@@ -23,20 +25,22 @@ class Truck:
     progress_m: float = 0
     collected_kg: int = 0
     completed_sides: int = 0
+    travelled_m: float = 0
 
 
 class Simulation:
     def __init__(self, network: Network | None = None, planner: Planner | None = None, seed: int | None = None):
-        self.network = network or demo_network()
+        self.network = network or load_network()
         self.planner = planner or GreedyPlanner()
         self.random = Random(seed)
         self.lock = RLock()
-        self.reset(64)
+        self.reset(max(64, ceil(len(self.network.tasks) / 5) * 8))
 
     def reset(self, capacity_kg: int):
         with self.lock:
             routes = self.planner.plan(self.network, capacity_kg)
             self.routes = routes
+            self.generation_id = str(uuid4())
             self.capacity_kg = capacity_kg
             self.speed = 1
             self.elapsed_seconds = 0.0
@@ -88,6 +92,7 @@ class Simulation:
                     remaining = edge.distance_m - truck.progress_m
                     moved = min(budget, remaining)
                     truck.progress_m += moved
+                    truck.travelled_m += moved
                     budget -= moved
                     if truck.progress_m + 1e-8 < edge.distance_m:
                         break
@@ -133,7 +138,8 @@ class Simulation:
             states = list(self.tasks.values())
             return {'status': self.status, 'speed': self.speed, 'capacity_kg': self.capacity_kg,
                     'elapsed_seconds': round(self.elapsed_seconds), 'updated_at': self.updated_at,
-                    'planner': self.planner.name, 'data_source': 'synthetic_demo',
+                    'generation_id': self.generation_id,
+                    'planner': self.planner.name, 'data_source': self.network.metadata['source'],
                     'trucks': trucks, 'tasks': [asdict(task) for task in states],
                     'summary': {'total': len(states), 'visited': sum(task.state == 'visited' for task in states),
                                 'in_progress': sum(task.state == 'in_progress' for task in states),

@@ -5,6 +5,7 @@ import { ApiError, request } from './api';
 import RouteMap from './RouteMap';
 import type { Network, Simulation, SideStatus } from './types';
 import { stateLabels, statusLabels, truckColors, truckLabels } from './types';
+import { blockProgress } from './mapGeometry';
 
 function Dialog({ title, children, close }: { title: string; children: ReactNode; close: () => void }) {
   const element = useRef<HTMLDialogElement>(null);
@@ -36,6 +37,7 @@ export default function App() {
   const [capacity, setCapacity] = useState(64);
   const [selectedTruck, setSelectedTruck] = useState<string | null>(null);
   const [selectedTask, setSelectedTask] = useState<string | null>(null);
+  const [selectedBlock, setSelectedBlock] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [showAll, setShowAll] = useState(false);
@@ -109,6 +111,8 @@ export default function App() {
   const activeTrucks = simulation?.trucks.filter(truck => ['traveling', 'collecting'].includes(truck.status)).length ?? 0;
   const selectedState = simulation?.tasks.find(task => task.id === selectedTask);
   const selectedDefinition = network?.tasks.find(task => task.id === selectedTask);
+  const blockDefinition = network?.blocks.features.find(block => block.properties.id === selectedBlock);
+  const blockState = blockDefinition && simulation ? blockProgress(blockDefinition.properties.task_ids, new Map(simulation.tasks.map(task => [task.id, task]))) : null;
   const filtered = network?.tasks.filter(task => {
     const state = simulation?.tasks.find(item => item.id === task.id);
     return (!query || `${task.block_id} ${task.side} ${state?.truck_id}`.toLowerCase().includes(query.toLowerCase())) &&
@@ -138,7 +142,7 @@ export default function App() {
 
       <main id="main-content" tabIndex={-1}>
         <div className="page-heading"><div><p className="eyebrow">GESTIÓN DE RESIDUOS · PUNO</p><h1>{section === 'fleet' ? 'Nuestra flota, en detalle' : operating ? 'Centro de operaciones' : 'Recolección, a la vista.'}</h1><p>{operating ? 'Planifica, simula y supervisa cada recorrido de la flota.' : 'Consulta las rutas y el avance de la recolección simulada en tu sector.'}</p></div><span className="date-chip"><Activity size={16} />Simulación académica</span></div>
-        <div className="demo-banner"><span className="demo-icon"><Route size={18} /></span><p><strong>Estás explorando una demostración.</strong> La red, las posiciones y los kilogramos son simulados; no representan el servicio real de Puno.</p></div>
+        <div className="demo-banner"><span className="demo-icon"><Route size={18} /></span><p><strong>Simulación de recolección.</strong> {network?.source === 'openstreetmap' ? 'Mapa y manzanas inferidas de calles OSM de Puno. ' : 'Red sintética de demostración. '}El movimiento y los kilogramos son simulados; no representan el servicio municipal real.</p></div>
         {networkError && <div className="error-banner" role="alert"><span>{networkError}{simulation && ' Los datos mostrados pueden estar desactualizados.'}</span><button className="text-button" onClick={() => setRetry(value => value + 1)}><RefreshCw size={16} />Reintentar</button></div>}
         <div role="status" className={notice ? 'notice' : 'sr-only'}>{notice}</div>
         {actionError && !modal && <div role="alert" className="error-banner">{actionError}<button className="icon-button" aria-label="Cerrar aviso" onClick={() => setActionError('')}><X size={16} /></button></div>}
@@ -158,9 +162,10 @@ export default function App() {
 
           {section === 'map' ? <section className="operations-grid" aria-label="Mapa y flota">
             <article className="map-card"><header className="card-header"><div><h2>Mapa de recolección</h2><p>Área de estudio · Puno</p></div><span className={`simulation-badge ${simulation.status}`}><span />{statusLabels[simulation.status]}</span></header>
-              <RouteMap network={network} simulation={simulation} selected={selectedTruck} select={setSelectedTruck} selectTask={setSelectedTask} />
+              <RouteMap network={network} simulation={simulation} selected={selectedTruck} select={setSelectedTruck} selectTask={id => { setSelectedBlock(null); setSelectedTask(id); }} selectBlock={id => { setSelectedTask(null); setSelectedBlock(id); }} />
               <footer className="map-legend" aria-label="Leyenda de estados"><span><i className="legend-line pending" />No visitado</span><span><i className="legend-line in_progress" />En recorrido</span><span><i className="legend-line visited" />Visitado</span></footer>
               {selectedTruck && <div className="route-selection">Ruta de {selectedTruck} seleccionada<button className="text-button" onClick={() => setSelectedTruck(null)}>Mostrar todas</button></div>}
+              <p className="map-instruction">{simulation.status === 'ready' ? operating ? 'Inicia la simulación para ver los camiones en movimiento.' : 'El operador debe iniciar la simulación para ver los camiones en movimiento.' : simulation.status === 'paused' ? 'Simulación en pausa: las posiciones se mantienen.' : simulation.status === 'completed' ? 'Recorrido completado. Los camiones regresaron al depósito.' : 'Los camiones se desplazan por sus rutas. Selecciona una manzana para consultar sus lados.'}</p>
             </article>
             <article className="fleet-card"><header className="card-header"><div><h2>Flota en campo</h2><p>5 camiones · 1 depósito</p></div><TruckIcon size={19} /></header><div className="truck-list">
               {simulation.trucks.map((truck, index) => <button className={`truck-item ${selectedTruck === truck.id ? 'selected' : ''}`} key={truck.id} aria-pressed={selectedTruck === truck.id} onClick={() => setSelectedTruck(selectedTruck === truck.id ? null : truck.id)}><div className="truck-item-top"><span className="truck-icon" style={{ color: truckColors[index], background: `${truckColors[index]}10` }}><TruckIcon size={21} /></span><span className="truck-name">Camión {truck.id}<small>{truckLabels[truck.status] ?? truck.status}</small></span><span className="truck-weight">{truck.collected_kg}<small>kg</small></span></div><div className="truck-item-bottom"><span>{truck.completed_sides} / {truck.assigned_sides} lados</span><span>{Math.round(truck.collected_kg / truck.capacity_kg * 100)}% de carga</span></div><div className="truck-progress"><span style={{ width: `${truck.collected_kg / truck.capacity_kg * 100}%`, background: truckColors[index] }} /></div></button>)}

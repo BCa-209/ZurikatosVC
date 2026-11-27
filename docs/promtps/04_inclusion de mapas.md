@@ -1,0 +1,1 @@
+Quiero una correccion sobre el mapa ineteractivo, usa esta api abieeta de mapbox, y convierte en poligonos de cada manzanan, que se vea la simulacion del movimiento de los camciones y actualiza la documentacion hecha
